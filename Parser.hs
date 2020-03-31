@@ -65,3 +65,38 @@ evaluateE'xpression tokens = (isToken PlusOperator) +.+ evaluateTExpression +.+ 
                                  [] -> State 0 []
                                  _  -> Failure)  $ tokens
 evaluateTExpression (IntLiteral a : ls) = State a ls
+
+--Aufgabe 1 a)
+evalOneExpression (IntLiteral a : PlusOperator : IntLiteral b : _) = a + b
+evalOneExpression (IntLiteral a : MinusOperator : IntLiteral b : _) = a - b
+
+--Aufgabe 1 b)
+evalOneExpressionParser (IntLiteral a : PlusOperator : IntLiteral b : tokens) = State (a+b) tokens
+evalOneExpressionParser (IntLiteral a : MinusOperator : IntLiteral b : tokens) = State (a-b) tokens
+evalOneExpressionParser _ = Failure
+
+--Aufgabe 2 a)
+evalTwoExpressions = evalOneExpressionParser +.+ evalOneExpressionParser
+
+--Aufgabe 2 b)
+evalTwoExpressionsAddedResults = evalOneExpressionParser +.+ evalOneExpressionParser >>> \(a,b) -> a+b
+
+--Aufgabe 2 c)
+many :: Parser tok a -> Parser tok [a]
+many p tokens = case p tokens of
+    Failure -> State [] tokens
+    State p1Res state1 ->
+        case many p state1 of
+            Failure -> State [p1Res] state1
+            State p2Res state2 -> State (p1Res: p2Res) state2
+
+evalAddExpression (PlusOperator : IntLiteral b : tokens) = State b tokens
+evalAddExpression _ = Failure
+evalSubExpression (MinusOperator : IntLiteral b : tokens) = State (-b) tokens
+evalSubExpression _ = Failure
+
+-- Wertet beliebig lange Expression aus:
+-- Beispiel: evalManyExpressions (toTokens "1 + 4 -2") ==> State 3 []
+evalManyExpressions :: Parser Token Int
+evalManyExpressions = evalOneExpressionParser +.+ many (evalAddExpression ||| evalSubExpression)
+                        >>> \(a, b) -> a + (sum b)
