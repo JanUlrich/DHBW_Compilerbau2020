@@ -1,12 +1,8 @@
 import Lexer
 
 type Parser tok a = [tok] -> ParserResult tok a
-data ParserResult tok a = Failure | State a [tok] deriving Show
 
-data Expression = Addition Expression Expression
-                | Subtraction Expression Expression
-                | Number Int
-                    deriving Show
+
 
 failure :: Parser a b
 failure _ = Failure
@@ -37,38 +33,18 @@ isToken token = satisfy $ (==) token
         runAlternative Failure = p2 toks
         runAlternative (State x y) = State x y
 
-(>>>) :: Parser tok a -> (a -> b) -> Parser tok b
+(>>>) :: ([tok] -> ParserResult tok a) -> (a -> b) -> ([tok] -> ParserResult tok b)
 (p >>> f) toks = case p toks of
     Failure -> Failure
     State a b -> State (f a) b
 
--- [String] -> ParserResult Expression [String]
-parseExpression :: Parser Token Expression
-parseExpression tokens = parseTExpression +.+ parseE'xpression
-                            >>> (\(e1, e2) -> Addition e1 e2) $ tokens
-parseE'xpression tokens = (isToken PlusOperator) +.+ parseTExpression +.+ parseE'xpression
-                            >>> (\((_, e1), e2) -> Addition e1 e2)
-                            ||| --- oder epsilon
-                            (\a -> case a of
-                                 [] -> State (Number 0) []
-                                 _  -> Failure)  $ tokens
-parseTExpression (IntLiteral a : ls) = State (Number a) ls
-
--- [String] -> ParserResult Expression [String]
-evaluateExpression :: Parser Token Int
-evaluateExpression tokens = evaluateTExpression +.+ evaluateE'xpression
-                            >>> (\(e1, e2) -> e1 + e2) $ tokens
-evaluateE'xpression tokens = (isToken PlusOperator) +.+ evaluateTExpression +.+ evaluateE'xpression
-                            >>> (\((_, e1), e2) -> e1 + e2)
-                            ||| --- oder epsilon
-                            (\a -> case a of
-                                 [] -> State 0 []
-                                 _  -> Failure)  $ tokens
-evaluateTExpression (IntLiteral a : ls) = State a ls
 
 --Aufgabe 1 a)
 evalOneExpression (IntLiteral a : PlusOperator : IntLiteral b : _) = a + b
 evalOneExpression (IntLiteral a : MinusOperator : IntLiteral b : _) = a - b
+
+data ParserResult tok a = Failure | State a [tok] 
+                    deriving Show
 
 --Aufgabe 1 b)
 evalOneExpressionParser (IntLiteral a : PlusOperator : IntLiteral b : tokens) = State (a+b) tokens
@@ -76,10 +52,50 @@ evalOneExpressionParser (IntLiteral a : MinusOperator : IntLiteral b : tokens) =
 evalOneExpressionParser _ = Failure
 
 --Aufgabe 2 a)
-evalTwoExpressions = evalOneExpressionParser +.+ evalOneExpressionParser
+evalTwoExpressions = (evalOneExpressionParser +.+ evalOneExpressionParser)
 
 --Aufgabe 2 b)
-evalTwoExpressionsAddedResults = evalOneExpressionParser +.+ evalOneExpressionParser >>> \(a,b) -> a+b
+evalTwoExpressionsAddedResults = (evalOneExpressionParser +.+ evalOneExpressionParser) >>> pairToInt
+pairToInt (a,b) = a + b 
+
+
+data Expression = Addition Expression Expression
+                | Subtraction Expression Expression
+                | Number Int
+                    deriving Show
+
+
+parseExpression :: [Token] -> ParserResult Token Expression
+parseExpression = error "To implement"
+
+evaluateExpression :: [Token] -> ParserResult Token Int
+evaluateExpression = evaluateTExpr +.+ evaluateExprPrime
+                        >>> \(t, e) -> t + e
+
+evaluateExprPrime :: [Token] -> ParserResult Token Int
+evaluateExprPrime = (plusOperatorParser +.+ evaluateTExpr +.+ evaluateExprPrime
+                        >>> \((_, t), e) -> t + e)
+                    |||
+                    (minusOperatorParser +.+ evaluateTExpr +.+ evaluateExprPrime
+                        >>> \((_, t), e) -> (-t) + e)
+                    ||| epsilonParser
+
+evaluateTExpr :: [Token] -> ParserResult Token Int
+evaluateTExpr (IntLiteral a : tokens) = State a tokens
+evaluateTExpr _ = Failure
+
+plusOperatorParser (PlusOperator : tokens) = State 0 tokens
+plusOperatorParser _ = Failure
+
+minusOperatorParser (MinusOperator : tokens) = State 0 tokens
+minusOperatorParser _ = Failure
+
+epsilonParser [] = State 0 []
+epsilonParser _ = Failure
+
+
+
+
 
 --Aufgabe 2 c)
 many :: Parser tok a -> Parser tok [a]
@@ -100,3 +116,5 @@ evalSubExpression _ = Failure
 evalManyExpressions :: Parser Token Int
 evalManyExpressions = evalOneExpressionParser +.+ many (evalAddExpression ||| evalSubExpression)
                         >>> \(a, b) -> a + (sum b)
+
+
