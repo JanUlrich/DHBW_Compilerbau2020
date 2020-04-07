@@ -42,26 +42,82 @@ isToken token = satisfy $ (==) token
     Failure -> Failure
     State a b -> State (f a) b
 
--- [String] -> ParserResult Expression [String]
-parseExpression :: Parser Token Expression
-parseExpression tokens = parseTExpression +.+ parseE'xpression
-                            >>> (\(e1, e2) -> Addition e1 e2) $ tokens
-parseE'xpression tokens = (isToken PlusOperator) +.+ parseTExpression +.+ parseE'xpression
-                            >>> (\((_, e1), e2) -> Addition e1 e2)
-                            ||| --- oder epsilon
-                            (\a -> case a of
-                                 [] -> State (Number 0) []
-                                 _  -> Failure)  $ tokens
-parseTExpression (IntLiteral a : ls) = State (Number a) ls
+many :: Parser tok a -> Parser tok [a]
+many p tokens = case p tokens of
+    Failure -> State [] tokens
+    State p1Res state1 ->
+        case many p state1 of
+            Failure -> State [p1Res] state1
+            State p2Res state2 -> State (p1Res: p2Res) state2
 
--- [String] -> ParserResult Expression [String]
-evaluateExpression :: Parser Token Int
-evaluateExpression tokens = evaluateTExpression +.+ evaluateE'xpression
-                            >>> (\(e1, e2) -> e1 + e2) $ tokens
-evaluateE'xpression tokens = (isToken PlusOperator) +.+ evaluateTExpression +.+ evaluateE'xpression
-                            >>> (\((_, e1), e2) -> e1 + e2)
-                            ||| --- oder epsilon
-                            (\a -> case a of
-                                 [] -> State 0 []
-                                 _  -> Failure)  $ tokens
-evaluateTExpression (IntLiteral a : ls) = State a ls
+data Stmt = If(BExpr, Stmt , Maybe Stmt)
+    | While( BExpr , Stmt )
+    | Block([Stmt])
+    | Empty
+    | Return( Maybe Expr )        deriving (Show)
+
+data BExpr = T
+    deriving (Show)
+
+data Expr = One
+    deriving (Show)
+
+isInt m (INTLITERAL n) = n == m
+isInt _ _ = False
+
+isBool v (BOOLLITERAL w) = v == w
+isBool _ _ = False
+
+
+
+stmt :: Parser Token Stmt
+stmt = ifstmt 
+    ||| ifelsestmt
+    ||| whilestmt
+    ||| block
+    ||| emptystmt
+    ||| returnstmt
+
+ifstmt :: Parser Token Stmt
+ifstmt = (isToken IF) +.+ (isToken LBRACE) >>> fst +.+ bexpression >>> snd
+    +.+ (isToken RBRACE) >>> fst +.+ stmt
+    >>> (\(bexpr, s) -> If(bexpr, s, Nothing))
+
+ifelsestmt :: Parser Token Stmt
+ifelsestmt = ((isToken IF) +.+ (isToken LBRACE) >>> fst +.+ bexpression >>> snd
+ +.+ (isToken RBRACE) >>> fst +.+ stmt +.+ (isToken ELSE) >>> fst +.+ stmt)
+ >>> (\((bexpr, s1), s2)-> If(bexpr, s1, Just s2))
+
+whilestmt :: Parser Token Stmt
+whilestmt = ((isToken WHILE) +.+ (isToken LBRACE) >>> fst +.+ bexpression >>> snd
+ +.+ ((isToken RBRACE) +.+ stmt >>> snd)) 
+ >>> (\(bexpr, s) -> While(bexpr, s))
+
+block :: Parser Token Stmt
+block = (((isToken LBRACKET) +.+ (isToken RBRACKET)) 
+    >>> (\(_, _) -> Block([])))
+    ||| (((isToken LBRACKET) +.+ stmts +.+ (isToken RBRACKET))
+        >>> (\((_, s), _) -> Block(s)))
+
+stmts :: Parser Token [Stmt]
+stmts = many stmt
+
+emptystmt :: Parser Token Stmt
+emptystmt = (isToken SEMICOLON) >>> (\_ -> Empty)
+
+returnstmt :: Parser Token Stmt
+returnstmt = (((isToken RETURN) +.+ (isToken SEMICOLON)) 
+    >>> (\(_, _) -> Return Nothing))
+    ||| (((isToken RETURN) +.+ expression +.+ (isToken SEMICOLON)) 
+    >>> (\((_, e), _) -> Return (Just e)))
+
+
+bexpression = (satisfy (isBool True)) >>> (\_ -> T)
+expression = (satisfy (isInt 1)) >>> (\_ -> One)
+
+parser :: String -> Maybe Stmt
+parser input = case stmt $ toTokens input of
+    State stmt [] -> Just stmt
+    _ -> Nothing
+
+main = putStrLn $ show $ parser "while ( true ) { while ( true ) { if (true) { return; } else {return 1; } } }" 
