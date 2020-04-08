@@ -71,8 +71,8 @@ isBool _ _ = False
 
 
 stmt :: Parser Token Stmt
-stmt = ifstmt 
-    ||| ifelsestmt
+stmt = ifelsestmt
+    ||| ifstmt 
     ||| whilestmt
     ||| block
     ||| emptystmt
