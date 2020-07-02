@@ -7,15 +7,18 @@ $alpha = [a-zA-Z]		-- alphabetic characters
 tokens :-
 
   $white+				;
-  [\+]					{ \s -> PlusOperator }
-  [\-]					{ \s -> MinusOperator }
-  $digit+		{ \s -> IntLiteral (read s) }
+  [=]					{ \s -> Equals }
+  [\{]					{ \s -> BraceOpen }
+  [\}]					{ \s -> BraceClose }
+  [\"][^\n\"]+[\"]		{ \s -> Data s }
+  [^\n=\}\{ \t]+		{ \s -> Data s }
 
 {
 data Token =
-  PlusOperator     |
-  MinusOperator    |
-	IntLiteral Int
+  BraceOpen    |
+	BraceClose  |
+  Equals |
+  Data String
 	deriving (Eq,Show)
 
 toTokens s = alexScanTokens s

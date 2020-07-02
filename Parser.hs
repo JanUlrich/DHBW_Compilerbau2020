@@ -1,12 +1,22 @@
 import Lexer
+import System.IO  
+import Control.Monad
 
 type Parser tok a = [tok] -> ParserResult tok a
 data ParserResult tok a = Failure | State a [tok] deriving Show
 
-data Expression = Addition Expression Expression
-                | Subtraction Expression Expression
-                | Number Int
-                    deriving Show
+data DataBlock = Block [Assertion]
+                | Value String
+                
+data Assertion = Assert String DataBlock
+
+instance Show Assertion where
+    show (Assert s v) = "\"" ++ s ++ "\"" ++ ":" ++ (show v)
+
+instance Show DataBlock where
+  show (Block []) = "{ }"
+  show (Block ass) = "{" ++ (foldl (\b a -> b ++ ",\n" ++ (show a)) (show $ head ass) (tail ass)) ++ "}"
+  show (Value v) = v
 
 failure :: Parser a b
 failure _ = Failure
@@ -42,6 +52,54 @@ isToken token = satisfy $ (==) token
     Failure -> Failure
     State a b -> State (f a) b
 
+many :: Parser tok a -> Parser tok [a]
+many p tokens = case p tokens of
+    Failure -> State [] tokens
+    State p1Res state1 ->
+        case many p state1 of
+            Failure -> State [p1Res] state1
+            State p2Res state2 -> State (p1Res: p2Res) state2
+
+findAssigns name ((Assert s (Value v)) : ls) = if name == s then 
+        (v : (findAssigns name ls))
+    else
+        findAssigns name ls
+findAssigns name ((Assert _ (Block v)) : ls) = (findAssigns name v) ++ (findAssigns name ls)
+findAssigns _ [] = []
+
+main = do  
+        let list = []
+        handle <- openFile "/tmp/data" ReadMode
+        contents <- hGetContents handle
+        let singlewords = contents
+            State s ls = parse $ toTokens singlewords
+            techs = findAssigns "\"tech_status\"" s
+        putStr $ show (Block s)
+        --print $ fst (splitAt 1000 ls)
+        --print techs
+        hClose handle   
+
+parse :: Parser Token [Assertion]
+parse = many (parseAssertion ||| parseAssertionBlock ) >>> concat
+
+parseAssertion :: Parser Token [Assertion]
+parseAssertion (Data d : Equals : ls) = case parseBlock ls of
+    State block ls2 -> State [(Assert d (block))] ls2 
+    _ -> Failure
+parseAssertion _ = Failure
+
+parseAssertionBlock = isToken BraceOpen +.+ parse +.+ isToken BraceClose >>> \((_, ass),_) -> ass
+
+parseData (Data d : ls) = State (Value d) ls
+parseData _ = Failure
+parseBlock (Data d : ls) = State (Value d) ls
+parseBlock (BraceOpen : BraceClose : ls) = State (Block []) ls
+parseBlock (BraceOpen : Data d : BraceClose : ls) = State (Value d) ls
+parseBlock (BraceOpen : ls) = ((many parseData +.+ isToken BraceClose >>> \(datas, _) -> (Value ("\"" ++ (show datas) ++ "\"")))
+                                ||| (parse +.+ isToken BraceClose >>> \(assertions, _) -> Block assertions)) ls
+parseBlock _ = Failure
+
+{-
 -- [String] -> ParserResult Expression [String]
 parseExpression :: Parser Token Expression
 parseExpression tokens = parseTExpression +.+ parseE'xpression
@@ -65,3 +123,4 @@ evaluateE'xpression tokens = (isToken PlusOperator) +.+ evaluateTExpression +.+ 
                                  [] -> State 0 []
                                  _  -> Failure)  $ tokens
 evaluateTExpression (IntLiteral a : ls) = State a ls
+-}
